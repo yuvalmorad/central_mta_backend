@@ -1,0 +1,73 @@
+_schema-version: "3.1"
+ID: central_mta_backend
+description: central_mta_backend application
+version: 1.0.0-SNAPSHOT
+modules:
+- name: central_mta_backend-srv
+  type: java
+  path: srv
+  properties:
+    SPRING_PROFILES_ACTIVE: cloud
+  requires:
+  - name: central_mta_backend-db
+  provides:
+  - name: srv-api
+    properties:
+      srv-url: ${default-url}
+  build-parameters:
+    build-result: target/*-exec.[wj]ar
+    builder: custom
+    commands:
+    - mvn clean package
+- name: central_mta_backend-db-deployer
+  type: hdb
+  path: db
+  requires:
+  - name: central_mta_backend-db
+  parameters:
+    buildpack: nodejs_buildpack
+- name: central-mta-backend-approuter
+  type: approuter.nodejs
+  path: central-mta-backend-approuter
+  requires:
+  - name: central_mta_backend_html_repo_runtime
+  - name: uaa_central_mta_backend
+  - name: srv-api
+    group: destinations
+    properties:
+      forwardAuthToken: true
+      name: srv-api
+      url: ~{srv-url}
+  parameters:
+    disk-quota: 256M
+    memory: 256M
+
+resources:
+- name: central_mta_backend-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+  properties:
+    hdi-service-name: ${service-name}
+- name: central_mta_backend_html_repo_runtime
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: html5-apps-repo
+    service-plan: app-runtime
+- name: uaa_central_mta_backend
+  type: org.cloudfoundry.managed-service
+  parameters:
+    path: ./xs-security.json
+    service: xsuaa
+    service-name: central_mta_backend-xsuaa-service
+    service-plan: application
+
+parameters:
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+  - builder: custom
+    commands:
+    - npm install --production
+    - npx -p @sap/cds-dk cds build --production
